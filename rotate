@@ -1,0 +1,69 @@
+from PIL import Image
+import json
+import os
+import base64
+from io import BytesIO
+
+def rotate_point(x, y, angle, width, height):
+    """根据旋转角度和图像尺寸计算新的坐标点。"""
+    if angle == 90:  # 顺时针旋转90度
+        return (height - y - 1, x)
+    elif angle == -90 or angle == 270:  # 逆时针旋转90度
+        return (y, width - x - 1)
+    elif angle == 180:  # 旋转180度
+        return (width - x - 1, height - y - 1)
+    else:  # 默认不旋转
+        return (x, y)
+
+def rotate_image_and_json(input_dir, output_dir, rotation_angle):
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    # 遍历输入目录中的所有文件
+    for filename in os.listdir(input_dir):
+        base_name, ext = os.path.splitext(filename)
+        if ext.lower() in [".jpg", ".jpeg", ".png"]:
+            # 处理图片
+            image_path = os.path.join(input_dir, filename)
+            img = Image.open(image_path)
+            original_width, original_height = img.size
+
+            # 旋转图片
+            rotated_img = img.rotate(-rotation_angle, expand=True)
+            rotated_image_path = os.path.join(output_dir, f"{base_name}_rot-{rotation_angle}{ext}")
+            rotated_img.save(rotated_image_path)
+
+        elif ext.lower() == ".json":
+            # 处理JSON
+            json_path = os.path.join(input_dir, filename)
+            with open(json_path, 'r') as file:
+                data = json.load(file)
+
+            # 解码imageData，旋转并重新编码
+            if 'imageData' in data:
+                image_data = base64.b64decode(data['imageData'])
+                image = Image.open(BytesIO(image_data))
+                rotated_image = image.rotate(-rotation_angle, expand=True)
+                buffered = BytesIO()
+                rotated_image.save(buffered, format=image.format)
+                new_image_data = base64.b64encode(buffered.getvalue()).decode('utf-8')
+                data['imageData'] = new_image_data  # 更新imageData字段
+
+            # 更新坐标点
+            for shape in data['shapes']:
+                rotated_points = []
+                for x, y in shape['points']:
+                    new_x, new_y = rotate_point(x, y, rotation_angle, original_width, original_height)
+                    rotated_points.append([new_x, new_y])
+                shape['points'] = rotated_points
+
+            # 保存修改后的JSON
+            rotated_json_path = os.path.join(output_dir, f"{base_name}_rot-{rotation_angle}.json")
+            with open(rotated_json_path, 'w') as file:
+                json.dump(data, file, indent=4)
+
+# 设置输入输出目录和旋转角度
+input_directory = './ori'
+output_directory = './after'
+rotation_angle = 270  # 示例为顺时针旋转90度
+rotate_image_and_json(input_directory, output_directory, rotation_angle)
